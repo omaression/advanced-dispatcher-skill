@@ -15,26 +15,48 @@ class DispatcherRouterTests(unittest.TestCase):
     def test_should_dispatch_rejects_out_of_scope_message(self) -> None:
         self.assertFalse(self.router.should_dispatch("Please implement endpoint"))
 
-    def test_standard_domain_routes_to_expected_model(self) -> None:
-        plan = self.router.route("please route this: implement endpoint", domain="coding")
+    def test_route_rejects_out_of_scope_prompt_by_default(self) -> None:
+        with self.assertRaises(RoutingError):
+            self.router.route(
+                "Please implement endpoint",
+                domain="coding",
+                allow_external=True,
+            )
+
+    def test_route_rejects_without_external_consent(self) -> None:
+        with self.assertRaises(RoutingError):
+            self.router.route("please route this: implement endpoint", domain="coding")
+
+    def test_route_accepts_explicit_external_consent_flag(self) -> None:
+        plan = self.router.route(
+            "please route this: implement endpoint --allow-external",
+            domain="coding",
+        )
         self.assertEqual(plan.mode, "standard")
         self.assertEqual(plan.primary_model, "openai-codex/gpt-5.3-codex")
 
-    def test_route_rejects_out_of_scope_prompt_by_default(self) -> None:
-        with self.assertRaises(RoutingError):
-            self.router.route("Please implement endpoint", domain="coding")
+    def test_route_accepts_external_consent_parameter(self) -> None:
+        plan = self.router.route(
+            "please route this: implement endpoint",
+            domain="coding",
+            allow_external=True,
+        )
+        self.assertEqual(plan.mode, "standard")
+        self.assertEqual(plan.primary_model, "openai-codex/gpt-5.3-codex")
 
     def test_route_can_bypass_scope_check_for_direct_unit_usage(self) -> None:
         plan = self.router.route(
             "Please implement endpoint",
             domain="coding",
             enforce_trigger_scope=False,
+            allow_external=True,
         )
         self.assertEqual(plan.primary_model, "openai-codex/gpt-5.3-codex")
 
     def test_tradeoff_defaults_to_no_opus_for_cost(self) -> None:
         plan = self.router.route(
-            "Can you evaluate tradeoffs between these designs?", domain="coding"
+            "Can you evaluate tradeoffs between these designs? --allow-external",
+            domain="coding",
         )
         self.assertEqual(plan.mode, "tradeoff-no-opus")
         self.assertEqual(
@@ -45,14 +67,15 @@ class DispatcherRouterTests(unittest.TestCase):
 
     def test_tradeoff_with_no_opus_flag(self) -> None:
         plan = self.router.route(
-            "compare approaches for service mesh --no-opus", domain="research"
+            "compare approaches for service mesh --no-opus --allow-external",
+            domain="research",
         )
         self.assertEqual(plan.mode, "tradeoff-no-opus")
         self.assertIsNone(plan.judge_model)
 
     def test_tradeoff_escalates_to_opus_only_when_high_impact_and_complex(self) -> None:
         plan = self.router.route(
-            "decide the best architecture for production compliance system",
+            "decide the best architecture for production compliance system --allow-external",
             domain="coding",
             complexity=ComplexitySignals(
                 interconnected_files=3,
@@ -63,13 +86,16 @@ class DispatcherRouterTests(unittest.TestCase):
         self.assertEqual(plan.judge_model, "anthropic/claude-opus-4-6")
 
     def test_tradeoff_force_opus(self) -> None:
-        plan = self.router.route("evaluate tradeoffs --force-opus", domain="coding")
+        plan = self.router.route(
+            "evaluate tradeoffs --force-opus --allow-external",
+            domain="coding",
+        )
         self.assertEqual(plan.mode, "tradeoff")
         self.assertEqual(plan.judge_model, "anthropic/claude-opus-4-6")
 
     def test_use_claude_without_escalation(self) -> None:
         plan = self.router.route(
-            "--use-claude please draft this single file refactor",
+            "--use-claude please draft this single file refactor --allow-external",
             domain="coding",
             complexity=ComplexitySignals(interconnected_files=3),
         )
@@ -78,7 +104,7 @@ class DispatcherRouterTests(unittest.TestCase):
 
     def test_use_claude_escalates_to_opus_only_on_strong_signal_set(self) -> None:
         plan = self.router.route(
-            "--use-claude build architecture",
+            "--use-claude build architecture --allow-external",
             domain="coding",
             complexity=ComplexitySignals(
                 interconnected_files=3,
@@ -89,7 +115,7 @@ class DispatcherRouterTests(unittest.TestCase):
 
     def test_use_claude_force_opus(self) -> None:
         plan = self.router.route(
-            "--use-claude --force-opus",
+            "--use-claude --force-opus --allow-external",
             domain="coding",
             complexity=ComplexitySignals(interconnected_files=0),
         )
@@ -97,7 +123,10 @@ class DispatcherRouterTests(unittest.TestCase):
 
     def test_invalid_domain_raises(self) -> None:
         with self.assertRaises(RoutingError):
-            self.router.route("route this", domain="finance")
+            self.router.route(
+                "route this --allow-external",
+                domain="finance",
+            )
 
     def test_empty_prompt_raises(self) -> None:
         with self.assertRaises(RoutingError):

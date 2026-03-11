@@ -5,6 +5,7 @@ Strictly cost-aware routing:
 - Opus usage is aggressively gated and requires explicit high-complexity/high-impact
   evidence (or an explicit force flag).
 - Dispatcher execution is scoped to explicit trigger intent.
+- External provider dispatch requires explicit consent per request/runtime call.
 """
 
 from __future__ import annotations
@@ -99,6 +100,27 @@ class DispatcherRouter:
     _FLAG_USE_CLAUDE = "--use-claude"
     _FLAG_NO_OPUS = "--no-opus"
     _FLAG_FORCE_OPUS = "--force-opus"
+    _FLAG_ALLOW_EXTERNAL = "--allow-external"
+
+    def should_dispatch(self, prompt: str) -> bool:
+        """Whether a message is in-scope for dispatcher behavior."""
+        if not prompt.strip():
+            return False
+
+        has_flag = any(
+            flag in prompt
+            for flag in (
+                self._FLAG_USE_CLAUDE,
+                self._FLAG_NO_OPUS,
+                self._FLAG_FORCE_OPUS,
+                self._FLAG_ALLOW_EXTERNAL,
+            )
+        )
+        has_tradeoff_phrase = self._is_tradeoff_request(prompt)
+        has_explicit_intent = any(
+            pattern.search(prompt) for pattern in DISPATCH_INTENT_PATTERNS
+        )
+        return has_flag or has_tradeoff_phrase or has_explicit_intent
 
     def should_dispatch(self, prompt: str) -> bool:
         """Whether a message is in-scope for dispatcher behavior."""
@@ -122,6 +144,7 @@ class DispatcherRouter:
         domain: str,
         complexity: ComplexitySignals | None = None,
         enforce_trigger_scope: bool = True,
+        allow_external: bool = False,
     ) -> RoutePlan:
         if not prompt.strip():
             raise RoutingError("prompt must not be empty")
@@ -129,6 +152,13 @@ class DispatcherRouter:
         if enforce_trigger_scope and not self.should_dispatch(prompt):
             raise RoutingError(
                 "prompt did not match dispatcher trigger scope; refusing background dispatch"
+            )
+
+        consent_via_flag = self._FLAG_ALLOW_EXTERNAL in prompt
+        if not (allow_external or consent_via_flag):
+            raise RoutingError(
+                "external dispatch requires explicit consent: pass allow_external=True "
+                "or include --allow-external"
             )
 
         domain_key = domain.strip().lower()
