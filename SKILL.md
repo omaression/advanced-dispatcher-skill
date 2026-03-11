@@ -7,6 +7,16 @@ description: Route mid-session work to the right spawned model without changing 
 
 Use this skill to classify work, dispatch it to the best spawned model, and return the result to the main session.
 
+## Runtime requirements
+
+This skill assumes the runtime can spawn work on these model families:
+
+- `openai-codex/*`
+- `opencode-go/*`
+- optional `anthropic/*` only when `--force-claude` is present
+
+If the host is self-managed, configure whatever provider credentials your runtime expects before using this skill. Typical setups use environment variables for OpenAI, Opencode, and optionally Anthropic, but the exact variable names depend on the host/runtime wrapper. Do not hardcode secrets into the skill package.
+
 ## Non-negotiable rules
 
 - Never use Anthropic models unless the current prompt contains `--force-claude`.
