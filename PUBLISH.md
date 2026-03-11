@@ -35,6 +35,15 @@ python3 /usr/lib/node_modules/openclaw/skills/skill-creator/scripts/package_skil
 
 ## Publish to ClawHub
 
+### CLI note
+
+If `clawhub publish` fails even when the package folder is valid, prefer the website GUI as a fallback. In this repo, the CLI was observed to fail in two ways:
+
+- relative path publish could fail with `Error: Path must be a folder` even when the folder existed
+- absolute path publish could fail with `Publish payload: acceptLicenseTerms: invalid value`
+
+That points to a CLI/API mismatch or broken publish flow rather than a problem with the skill package itself.
+
 This skill was previously published under the slug:
 
 - `advanced-dispatcher-skill`
