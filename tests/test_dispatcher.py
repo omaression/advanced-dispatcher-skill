@@ -7,9 +7,29 @@ class DispatcherRouterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.router = DispatcherRouter()
 
+    def test_should_dispatch_detects_flag_tradeoff_and_explicit_intent(self) -> None:
+        self.assertTrue(self.router.should_dispatch("--use-claude draft this"))
+        self.assertTrue(self.router.should_dispatch("evaluate tradeoffs for this design"))
+        self.assertTrue(self.router.should_dispatch("please route this to coding"))
+
+    def test_should_dispatch_rejects_out_of_scope_message(self) -> None:
+        self.assertFalse(self.router.should_dispatch("Please implement endpoint"))
+
     def test_standard_domain_routes_to_expected_model(self) -> None:
-        plan = self.router.route("Please implement endpoint", domain="coding")
+        plan = self.router.route("please route this: implement endpoint", domain="coding")
         self.assertEqual(plan.mode, "standard")
+        self.assertEqual(plan.primary_model, "openai-codex/gpt-5.3-codex")
+
+    def test_route_rejects_out_of_scope_prompt_by_default(self) -> None:
+        with self.assertRaises(RoutingError):
+            self.router.route("Please implement endpoint", domain="coding")
+
+    def test_route_can_bypass_scope_check_for_direct_unit_usage(self) -> None:
+        plan = self.router.route(
+            "Please implement endpoint",
+            domain="coding",
+            enforce_trigger_scope=False,
+        )
         self.assertEqual(plan.primary_model, "openai-codex/gpt-5.3-codex")
 
     def test_tradeoff_defaults_to_no_opus_for_cost(self) -> None:
@@ -43,9 +63,7 @@ class DispatcherRouterTests(unittest.TestCase):
         self.assertEqual(plan.judge_model, "anthropic/claude-opus-4-6")
 
     def test_tradeoff_force_opus(self) -> None:
-        plan = self.router.route(
-            "evaluate tradeoffs --force-opus", domain="coding"
-        )
+        plan = self.router.route("evaluate tradeoffs --force-opus", domain="coding")
         self.assertEqual(plan.mode, "tradeoff")
         self.assertEqual(plan.judge_model, "anthropic/claude-opus-4-6")
 
@@ -79,7 +97,7 @@ class DispatcherRouterTests(unittest.TestCase):
 
     def test_invalid_domain_raises(self) -> None:
         with self.assertRaises(RoutingError):
-            self.router.route("hello", domain="finance")
+            self.router.route("route this", domain="finance")
 
     def test_empty_prompt_raises(self) -> None:
         with self.assertRaises(RoutingError):

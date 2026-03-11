@@ -4,7 +4,7 @@ description: Transforms OpenClaw into a task dispatcher. Uses spawned runs to ro
 version: v0.2.0
 triggers:
   - type: message
-    pattern: "(?is).*(--use-claude|--no-opus|--force-opus|evaluate\\s+tradeoffs?|compare\\s+approaches|decide\\s+the\\s+best\\s+architecture|\\bcoding\\b|\\bresearch\\b|\\bcreative\\b|\\butility\\b).*"
+    pattern: "(?is).*(--use-claude|--no-opus|--force-opus|evaluate\\s+tradeoffs?|compare\\s+approaches|decide\\s+the\\s+best\\s+architecture|\\b(route|dispatch)\\s+this\\b|\\buse\\s+dispatcher\\b).*"
 permissions:
   - models.spawn
   - models.parallel
@@ -19,7 +19,9 @@ This skill routes to external provider models (`openai-codex/*`, `opencode-go/*`
 If neither mode is available, spawned runs to those providers will fail by policy or authentication errors.
 
 # Core Directive (The Dispatcher Pattern)
-You operate on a fixed-session architecture. When a user requests a task requiring a different model than the current active session, DO NOT attempt to process it with the current model. Instead, use model overrides to spawn a background run with the correct target model, execute the task, and return the output to the main session. Anthropic models are forbidden for standard routing; they are allowed only under explicit controls (`--use-claude`, or the Tradeoff Evaluation Protocol with strict Opus gate).
+You operate on a fixed-session architecture. Only apply dispatcher behavior when the message matches this skill's trigger (flags, explicit tradeoff requests, or explicit route/dispatch intent). For ordinary chat outside this scope, do not spawn background runs.
+
+When dispatcher behavior is in-scope and the user requests a task requiring a different model than the current active session, DO NOT attempt to process it with the current model. Instead, use model overrides to spawn a background run with the correct target model, execute the task, and return the output to the main session. Anthropic models are forbidden for standard routing; they are allowed only under explicit controls (`--use-claude`, or the Tradeoff Evaluation Protocol with strict Opus gate).
 
 # Explicit Overrides & Flags (Highest Priority)
 Scan the user's prompt for these flags before applying any standard routing logic:
@@ -61,7 +63,7 @@ When the user asks to "evaluate tradeoffs", "compare approaches", or "decide the
 
 # Security Posture
 * **No persistent writes:** This skill does not require `memory.write` or `config.write` and should run without those privileges.
-* **Scoped activation:** Triggering is intentionally narrowed to routing-related requests and dispatcher flags, not every message.
+* **Scoped activation:** Triggering is intentionally narrowed to dispatcher flags and explicit routing/tradeoff requests, not every message.
 * **Code-backed behavior:** Routing decisions are implemented and test-covered in `dispatcher.py` and `tests/test_dispatcher.py`.
 ## Implementation Notes (Repository)
 
@@ -69,6 +71,7 @@ The repository contains executable logic for this skill in `dispatcher.py`.
 
 ### Strict behavior encoded
 - Route selection is deterministic and returns a `RoutePlan` structure.
+- Dispatcher scope is enforced in code via `should_dispatch(...)` and `route(..., enforce_trigger_scope=True)` by default.
 - Prompt flags are interpreted with highest priority for non-tradeoff flows:
   - `--use-claude`: forces Anthropic, but Opus escalation is strictly gated (2+ complexity signals or 5+ files).
   - `--no-opus`: hard-disables Opus in tradeoff flows.

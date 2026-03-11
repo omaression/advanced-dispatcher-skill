@@ -3,9 +3,9 @@
 ## Overview
 This skill transforms OpenClaw into an intelligent task dispatcher. Because OpenClaw operates on a fixed-session architecture, it cannot natively swap its core "brain" mid-conversation. Instead, this skill allows your active session to spawn temporary, background runs using specific, cost-effective models based on the cognitive demand of your prompt. It prioritizes efficient routing to minimize API burn, executes multi-model debates for complex decisions, and aggressively manages its context window.
 
-## Autonomous Behaviors (No Input Required)
+## Intent-Driven Behaviors (Scoped Activation)
 
-Once this skill is active, OpenClaw operates as a manager, handling the following in the background:
+When a message explicitly signals routing intent (dispatcher flags, tradeoff requests, or explicit "route/dispatch this" wording), OpenClaw operates as a manager and handles the following in the background:
 
 ### 1. The Dispatcher Pattern (Spawned Runs)
 When you request a task that requires a different model than your current active session, OpenClaw will not attempt to process it with the current model. Instead, it dispatches a spawned run using the overrides below, processes the task in the background, and returns the result to your main chat:
@@ -66,6 +66,7 @@ This repository now includes a strict, testable routing engine that mirrors this
 
 - `dispatcher.py`
   - Implements deterministic route planning via `DispatcherRouter.route(...)`.
+  - Enforces scoped activation in code (`should_dispatch(...)`) so ordinary out-of-scope prompts are rejected unless explicitly overridden for direct unit usage.
   - Enforces explicit domain inputs: `coding`, `research`, `creative`, `utility`.
   - Implements tradeoff protocol detection (`evaluate tradeoffs`, `compare approaches`, `decide the best architecture`).
   - Supports explicit flags `--use-claude`, `--no-opus`, and `--force-opus` exactly as documented.
@@ -102,7 +103,7 @@ The goal is the most cost-effective practical setup:
 This skill is intentionally hardened for marketplace review:
 
 - **No persistent write privileges required:** skill metadata requests only `models.spawn` and `models.parallel`.
-- **Scoped trigger pattern:** activation is narrowed to routing flags and dispatcher-related phrases, not every message.
+- **Scoped trigger pattern:** activation is narrowed to routing flags and explicit dispatcher/tradeoff intent, not every message.
 - **Code-backed claims:** documented behavior is implemented in `dispatcher.py` and verified in `tests/test_dispatcher.py`.
 
 ### Canonical model IDs used by code
