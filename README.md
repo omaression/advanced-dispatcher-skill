@@ -3,9 +3,9 @@
 ## Overview
 This skill transforms OpenClaw into an intelligent task dispatcher. Because OpenClaw operates on a fixed-session architecture, it cannot natively swap its core "brain" mid-conversation. Instead, this skill allows your active session to spawn temporary, background runs using specific, cost-effective models based on the cognitive demand of your prompt. It prioritizes efficient routing to minimize API burn, executes multi-model debates for complex decisions, and aggressively manages its context window.
 
-## Autonomous Behaviors (No Input Required)
+## Intent-Driven Behaviors (Scoped Activation)
 
-Once this skill is active, OpenClaw operates as a manager, handling the following in the background:
+When a message explicitly signals routing intent (dispatcher flags, tradeoff requests, or explicit "route/dispatch this" wording), OpenClaw operates as a manager and handles the following in the background:
 
 ### 1. The Dispatcher Pattern (Spawned Runs)
 When you request a task that requires a different model than your current active session, OpenClaw will not attempt to process it with the current model. Instead, it dispatches a spawned run using the overrides below, processes the task in the background, and returns the result to your main chat:
@@ -42,6 +42,8 @@ You retain absolute control. Use these flags anywhere in your prompt to bypass O
   * **Result:** Outputs Sonnet and GLM-5 arguments side-by-side for direct user evaluation.
 * **`--force-opus`**
   * **Action:** Explicitly permits Opus for the current prompt, bypassing normal cost gates.
+* **`--allow-external`**
+  * **Action:** Explicit consent that permits external provider dispatch for the current prompt (alternative: runtime consent from caller).
 
 ## The Claude Escalation Threshold (Sonnet vs. Opus)
 
@@ -66,6 +68,8 @@ This repository now includes a strict, testable routing engine that mirrors this
 
 - `dispatcher.py`
   - Implements deterministic route planning via `DispatcherRouter.route(...)`.
+  - Enforces scoped activation in code (`should_dispatch(...)`) so ordinary out-of-scope prompts are rejected unless explicitly overridden for direct unit usage.
+  - Enforces explicit egress consent (`--allow-external` or runtime consent flag) before any external provider route plan is returned.
   - Enforces explicit domain inputs: `coding`, `research`, `creative`, `utility`.
   - Implements tradeoff protocol detection (`evaluate tradeoffs`, `compare approaches`, `decide the best architecture`).
   - Supports explicit flags `--use-claude`, `--no-opus`, and `--force-opus` exactly as documented.
@@ -75,6 +79,10 @@ This repository now includes a strict, testable routing engine that mirrors this
   - Unit tests for standard routes, tradeoff mode, no-opus mode, Claude escalation behavior, and invalid input handling.
 
 
+
+## Data Egress & Privacy Notes
+
+Spawned runs route prompts to third-party provider endpoints. If local files are fetched for a task, only user-approved files should be fetched and those fetched contents are part of provider-bound context. Do not use this skill with secrets/private data unless you explicitly approve external transmission to the configured providers.
 
 ## Runtime Credentials / Provider Access
 
@@ -102,7 +110,8 @@ The goal is the most cost-effective practical setup:
 This skill is intentionally hardened for marketplace review:
 
 - **No persistent write privileges required:** skill metadata requests only `models.spawn` and `models.parallel`.
-- **Scoped trigger pattern:** activation is narrowed to routing flags and dispatcher-related phrases, not every message.
+- **Scoped trigger pattern:** activation is narrowed to routing flags and explicit dispatcher/tradeoff intent, not every message.
+- **Explicit egress consent:** external dispatch requires explicit consent (`--allow-external` or runtime consent by the caller).
 - **Code-backed claims:** documented behavior is implemented in `dispatcher.py` and verified in `tests/test_dispatcher.py`.
 
 ### Canonical model IDs used by code
