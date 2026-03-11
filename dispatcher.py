@@ -122,6 +122,21 @@ class DispatcherRouter:
         )
         return has_flag or has_tradeoff_phrase or has_explicit_intent
 
+    def should_dispatch(self, prompt: str) -> bool:
+        """Whether a message is in-scope for dispatcher behavior."""
+        if not prompt.strip():
+            return False
+
+        has_flag = any(
+            flag in prompt
+            for flag in (self._FLAG_USE_CLAUDE, self._FLAG_NO_OPUS, self._FLAG_FORCE_OPUS)
+        )
+        has_tradeoff_phrase = self._is_tradeoff_request(prompt)
+        has_explicit_intent = any(
+            pattern.search(prompt) for pattern in DISPATCH_INTENT_PATTERNS
+        )
+        return has_flag or has_tradeoff_phrase or has_explicit_intent
+
     def route(
         self,
         prompt: str,
