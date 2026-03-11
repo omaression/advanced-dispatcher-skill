@@ -27,8 +27,8 @@ To keep token costs low and response times fast:
 
 When you explicitly ask OpenClaw to **"evaluate tradeoffs"**, **"compare approaches"**, or **"decide the best architecture"**, it triggers an automated multi-model debate via parallel spawned runs:
 1. **Parallel Generation:** It spawns runs for both `anthropic/claude-sonnet-4-6` and `opencode-go/glm-5` simultaneously to generate competing architectural approaches from diverse model families.
-2. **The Opus Judge:** It feeds both arguments into a final spawned run using `anthropic/claude-opus-4-6`.
-3. **The Verdict:** Opus evaluates the merits of both sides and delivers a final, decisive recommendation back to your main chat.
+2. **Strict Opus Gate (Default Off):** It only uses `anthropic/claude-opus-4-6` when the task is clearly high-impact and highly complex, or when you explicitly pass `--force-opus`.
+3. **Default Behavior:** Without that strict gate, it skips Opus and returns Sonnet + GLM-5 outputs side-by-side to minimize cost.
 
 ## Manual Overrides & Flags
 
@@ -38,16 +38,18 @@ You retain absolute control. Use these flags anywhere in your prompt to bypass O
   * **Action:** Overrides standard routing and forces a spawned run using Anthropic strictly for the prompt mentioning this flag. 
   * **Smart Escalation:** It will default to `anthropic/claude-sonnet-4-6` as long as the task is under a certain reasoning threshold. However, if OpenClaw determines the task crosses a threshold of high cognitive complexity (see triggers below), it will automatically fall back to `anthropic/claude-opus-4-6`.
 * **`--no-opus`**
-  * **Action:** Modifies the Tradeoff Protocol. Use this when you want a parallel comparison but the comparison isn't worth burning the API credits on an Opus judgment.
-  * **Result:** Bypasses the Opus spawned run entirely and simply outputs the Sonnet and GLM-5 arguments side-by-side for you to evaluate yourself.
+  * **Action:** Hard-disables Opus in tradeoff flows.
+  * **Result:** Outputs Sonnet and GLM-5 arguments side-by-side for direct user evaluation.
+* **`--force-opus`**
+  * **Action:** Explicitly permits Opus for the current prompt, bypassing normal cost gates.
 
 ## The Claude Escalation Threshold (Sonnet vs. Opus)
 
-When the `--use-claude` flag is triggered, OpenClaw will only autonomously escalate the spawned run to the highly expensive `anthropic/claude-opus-4-6` if the request meets **at least one** of the following hard complexity triggers:
+When the `--use-claude` flag is triggered, OpenClaw will only autonomously escalate the spawned run to the highly expensive `anthropic/claude-opus-4-6` if the request meets a **strict** threshold: **at least two triggers**, or an extreme scope signal (5+ interconnected files).
 
 ### 1. Multi-File Dependency (Scope)
 * **Sonnet:** The task is isolated to 1–2 files (e.g., writing a single script, styling a UI component).
-* **Opus Trigger:** The task requires OpenClaw to read, understand, or modify **3 or more interconnected files** (e.g., refactoring a database schema that impacts backend models, API routes, and frontend state simultaneously).
+* **Opus Contribution:** This counts as one escalation signal at 3+ interconnected files; by itself it does not auto-trigger Opus unless scope is extreme (5+ files).
 
 ### 2. Algorithmic & Architectural Depth (Reasoning)
 * **Sonnet:** Standard implementation tasks, consuming straightforward APIs, or standard debugging.
@@ -56,3 +58,28 @@ When the `--use-claude` flag is triggered, OpenClaw will only autonomously escal
 ### 3. Context Payload (Token Weight)
 * **Sonnet:** The combined token count of your prompt plus any locally fetched files or documentation is relatively light.
 * **Opus Trigger:** The required context payload is massive, ensuring nothing is lost in the noise of a massive context window.
+---
+
+## Local Reference Implementation (Added)
+
+This repository now includes a strict, testable routing engine that mirrors this document:
+
+- `dispatcher.py`
+  - Implements deterministic route planning via `DispatcherRouter.route(...)`.
+  - Enforces explicit domain inputs: `coding`, `research`, `creative`, `utility`.
+  - Implements tradeoff protocol detection (`evaluate tradeoffs`, `compare approaches`, `decide the best architecture`).
+  - Supports explicit flags `--use-claude`, `--no-opus`, and `--force-opus` exactly as documented.
+  - Implements strict Claude escalation via `ComplexitySignals` (requires 2+ triggers, or extreme scope at 5+ interconnected files).
+  - Validates model IDs against the provider/model convention (`provider/model-name`) before returning plans.
+- `tests/test_dispatcher.py`
+  - Unit tests for standard routes, tradeoff mode, no-opus mode, Claude escalation behavior, and invalid input handling.
+
+### Canonical model IDs used by code
+
+- `openai-codex/gpt-5.3-codex`
+- `opencode-go/kimi-k2.5`
+- `opencode-go/minimax-m2.5`
+- `openai-codex/gpt-5.3-codex-spark`
+- `opencode-go/glm-5`
+- `anthropic/claude-sonnet-4-6`
+- `anthropic/claude-opus-4-6`
