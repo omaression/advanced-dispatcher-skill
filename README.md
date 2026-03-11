@@ -16,7 +16,7 @@ When you request a task that requires a different model than your current active
 
 ### 2. Explicit Session Transitions
 If you fundamentally shift workflows (e.g., moving entirely from an hour of "Coding" to an hour of "Research"), spawning constant background runs is inefficient. 
-* **The Transition Rule:** OpenClaw will pause, use the `openai-codex/gpt-5.3-codex-spark` model to write a highly condensed summary of your current project state, save it to persistent memory, and explicitly ask you: *"Task domain shifted. Should I close this session so you can start a new fixed session with [Target Model]?"*
+* **The Transition Rule:** OpenClaw will pause, use the `openai-codex/gpt-5.3-codex-spark` model to write a highly condensed **ephemeral** summary of your current project state, and explicitly ask you: *"Task domain shifted. Should I close this session so you can start a new fixed session with [Target Model]?"*
 
 ### 3. Surgical Context Management
 To keep token costs low and response times fast:
@@ -25,7 +25,7 @@ To keep token costs low and response times fast:
 
 ## The Tradeoff Protocol (Mixture of Experts)
 
-When you explicitly ask OpenClaw to **"evaluate tradeoffs"**, **"compare approaches"**, or **"decide the best architecture"**, it triggers an automated multi-model debate via parallel spawned runs:
+When you explicitly ask OpenClaw to **"evaluate tradeoffs"**, **"compare approaches"**, or **"decide the best architecture"**, it triggers an automated multi-model debate via parallel spawned runs (this is an explicit protocol exception to the default Anthropic block):
 1. **Parallel Generation:** It spawns runs for both `anthropic/claude-sonnet-4-6` and `opencode-go/glm-5` simultaneously to generate competing architectural approaches from diverse model families.
 2. **Strict Opus Gate (Default Off):** It only uses `anthropic/claude-opus-4-6` when the task is clearly high-impact and highly complex, or when you explicitly pass `--force-opus`.
 3. **Default Behavior:** Without that strict gate, it skips Opus and returns Sonnet + GLM-5 outputs side-by-side to minimize cost.
@@ -62,7 +62,7 @@ When the `--use-claude` flag is triggered, OpenClaw will only autonomously escal
 
 ## Local Reference Implementation (Added)
 
-This repository now includes a strict, testable routing engine that mirrors this document:
+This repository now includes a strict routing engine that mirrors this document:
 
 - `dispatcher.py`
   - Implements deterministic route planning via `DispatcherRouter.route(...)`.
@@ -71,8 +71,35 @@ This repository now includes a strict, testable routing engine that mirrors this
   - Supports explicit flags `--use-claude`, `--no-opus`, and `--force-opus` exactly as documented.
   - Implements strict Claude escalation via `ComplexitySignals` (requires 2+ triggers, or extreme scope at 5+ interconnected files).
   - Validates model IDs against the provider/model convention (`provider/model-name`) before returning plans.
-- `tests/test_dispatcher.py`
-  - Unit tests for standard routes, tradeoff mode, no-opus mode, Claude escalation behavior, and invalid input handling.
+
+## Runtime Credentials / Provider Access
+
+This dispatcher intentionally calls multiple external providers (`openai-codex`, `opencode-go`, `anthropic`) via spawned runs.
+
+### Chosen deployment profile (original implementation): Option A
+
+I originally implemented this skill for **platform-managed provider access**. That means the host platform provides model entitlements and runtime auth wiring, while the skill package itself does not ship secrets.
+
+- **Primary assumption:** Platform-managed access for OpenAI Codex and Opencode models.
+- **Anthropic status:** I do have an Anthropic API key available, but Anthropic usage is intentionally constrained to strict exception paths only.
+
+If platform provider access is missing, route planning can still succeed, but spawned execution will fail with policy/auth errors.
+
+### Cost target of the suggested implementation
+
+The goal is the most cost-effective practical setup:
+
+- **Opencode Go plan:** about **$10** (baseline high-volume routing surface).
+- **GPT Pro:** about **$20** (core coding/architecture throughput).
+- **Anthropic spend:** keep this as low as possible by invoking Anthropic only when profoundly needed (explicit `--use-claude` or strict tradeoff protocol gating).
+
+## Security & ClawHub Review Notes
+
+This skill is intentionally hardened for marketplace review:
+
+- **No persistent write privileges required:** skill metadata requests only `models.spawn` and `models.parallel`.
+- **Scoped trigger pattern:** activation is narrowed to routing flags and dispatcher-related phrases, not every message.
+- **Code-backed claims:** documented behavior is implemented in `dispatcher.py`.
 
 ### Canonical model IDs used by code
 

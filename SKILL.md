@@ -1,21 +1,25 @@
 ---
 name: advanced-dispatcher-routing
 description: Transforms OpenClaw into a task dispatcher. Uses spawned runs to route sub-tasks to cost-effective models without breaking the fixed session. Features multi-model debates and granular Anthropic overrides.
-version: 2.1.0
+version: v0.2.0
 triggers:
   - type: message
-    pattern: ".*" 
+    pattern: "(?is).*(--use-claude|--no-opus|--force-opus|evaluate\\s+tradeoffs?|compare\\s+approaches|decide\\s+the\\s+best\\s+architecture|\\bcoding\\b|\\bresearch\\b|\\bcreative\\b|\\butility\\b).*"
 permissions:
-  - memory.read
-  - memory.write
-  - config.read
-  - config.write
   - models.spawn
   - models.parallel
 ---
 
+# Runtime Requirements (Credentials)
+This skill routes to external provider models (`openai-codex/*`, `opencode-go/*`, `anthropic/*`). At runtime, you must use **one** of these deployment modes:
+
+1. **Platform-managed provider access (recommended for hosted installs):** The platform preconfigures provider credentials and model entitlements. No user-managed secrets are required in this skill package.
+2. **Bring-your-own credentials (self-hosted / custom runtime):** Configure provider access before enabling this skill (for example via environment variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and any Opencode credential your runtime expects).
+
+If neither mode is available, spawned runs to those providers will fail by policy or authentication errors.
+
 # Core Directive (The Dispatcher Pattern)
-You operate on a fixed-session architecture. When a user requests a task requiring a different model than the current active session, DO NOT attempt to process it with the current model. Instead, use model overrides to spawn a background run with the correct target model, execute the task, and return the output to the main session. Anthropic models are strictly forbidden unless explicit flags or protocols dictate otherwise.
+You operate on a fixed-session architecture. When a user requests a task requiring a different model than the current active session, DO NOT attempt to process it with the current model. Instead, use model overrides to spawn a background run with the correct target model, execute the task, and return the output to the main session. Anthropic models are forbidden for standard routing; they are allowed only under explicit controls (`--use-claude`, or the Tradeoff Evaluation Protocol with strict Opus gate).
 
 # Explicit Overrides & Flags (Highest Priority)
 Scan the user's prompt for these flags before applying any standard routing logic:
@@ -39,7 +43,7 @@ If no explicit flags are detected, evaluate the input and trigger a spawned run 
   * **Action:** Spawn run with `openai-codex/gpt-5.3-codex-spark`.
 
 # The Tradeoff Evaluation Protocol (Mixture of Experts)
-When the user asks to "evaluate tradeoffs", "compare approaches", or "decide the best architecture":
+When the user asks to "evaluate tradeoffs", "compare approaches", or "decide the best architecture" (this is an explicit protocol exception to standard Anthropic blocking):
 1. **Parallel Generation:** Spawn simultaneous runs for `anthropic/claude-sonnet-4-6` and `opencode-go/glm-5` to generate competing proposals.
 2. **Strict Opus Gate (Cost-First):** Use `anthropic/claude-opus-4-6` as judge only when one of these is true:
    - the user explicitly includes `--force-opus`, OR
@@ -54,6 +58,11 @@ When the user asks to "evaluate tradeoffs", "compare approaches", or "decide the
 # Emergency Fallbacks
 * If `openai-codex/gpt-5.3-codex` fails -> Fallback to `opencode-go/glm-5`.
 * Do not route to Anthropic for standard tasks unless the `--use-claude` flag is present.
+
+# Security Posture
+* **No persistent writes:** This skill does not require `memory.write` or `config.write` and should run without those privileges.
+* **Scoped activation:** Triggering is intentionally narrowed to routing-related requests and dispatcher flags, not every message.
+* **Code-backed behavior:** Routing decisions are implemented in `dispatcher.py`.
 ## Implementation Notes (Repository)
 
 The repository contains executable logic for this skill in `dispatcher.py`.
@@ -69,10 +78,3 @@ The repository contains executable logic for this skill in `dispatcher.py`.
   - `compare approaches`
   - `decide the best architecture`
 - Model IDs are validated against `provider/model` format and use the exact canonical names listed in this document.
-
-### Test coverage
-See `tests/test_dispatcher.py` for coverage of:
-- Standard domain routing.
-- Tradeoff protocol with and without Opus.
-- Claude override and escalation logic.
-- Input validation and failure behavior.
