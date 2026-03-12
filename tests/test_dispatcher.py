@@ -35,6 +35,51 @@ class DispatcherRouterTests(unittest.TestCase):
         self.assertEqual(plan.primary.model, "openai-codex/gpt-5.3-codex-spark")
         self.assertEqual(plan.primary.cache_retention, "long")
 
+    def test_buildq_pipeline_shape(self) -> None:
+        plan = self.router.route("buildq: fix CLI parser", domain="code-architecture")
+        self.assertEqual(plan.mode, "buildq")
+        self.assertEqual(len(plan.pipeline), 5)
+        self.assertEqual(plan.pipeline[0].name, "plan")
+        self.assertEqual(plan.pipeline[0].run.model, "openai-codex/gpt-5.4")
+        self.assertEqual(plan.pipeline[2].run.model, "opencode-go/glm-5")
+        self.assertEqual(plan.pipeline[3].run.model, "openai-codex/gpt-5.3-codex")
+
+    def test_build_pipeline_shape_and_models(self) -> None:
+        plan = self.router.route("build: implement auth service", domain="code-architecture")
+        self.assertEqual(plan.mode, "build")
+        self.assertEqual(len(plan.pipeline), 10)
+        self.assertEqual(
+            [step.name for step in plan.pipeline[:4]],
+            ["parallel-plan-a", "parallel-plan-b", "judge-plan", "boilerplate"],
+        )
+        self.assertEqual(plan.pipeline[0].run.model, "openai-codex/gpt-5.4")
+        self.assertEqual(plan.pipeline[1].run.model, "opencode-go/glm-5")
+        self.assertEqual(plan.pipeline[2].run.model, "openai-codex/gpt-5.4")
+        self.assertEqual(plan.pipeline[3].run.model, "openai-codex/gpt-5.3-codex-spark")
+        self.assertEqual(plan.pipeline[6].run.model, "openai-codex/gpt-5.3-codex")
+        self.assertEqual(plan.pipeline[-1].run.model, "opencode-go/glm-5")
+
+    def test_buildx_pipeline_shape_and_second_reviewer(self) -> None:
+        plan = self.router.route("buildx: refactor multi-module backend", domain="code-architecture")
+        self.assertEqual(plan.mode, "buildx")
+        self.assertEqual(len(plan.pipeline), 12)
+        self.assertEqual(plan.pipeline[10].name, "review-resolve-b")
+        self.assertEqual(plan.pipeline[10].run.model, "opencode-go/kimi-k2.5")
+        self.assertEqual(plan.pipeline[-1].run.model, "opencode-go/glm-5")
+
+    def test_claude_never_appears_in_build_pipelines(self) -> None:
+        for prompt in (
+            "buildq: fix parser",
+            "build: implement auth service --force-claude",
+            "buildx: refactor backend",
+        ):
+            with self.subTest(prompt=prompt):
+                plan = self.router.route(prompt, domain="code-architecture")
+                self.assertTrue(plan.pipeline)
+                all_models = [step.run.model for step in plan.pipeline]
+                self.assertNotIn("anthropic/claude-sonnet-4-6", all_models)
+                self.assertNotIn("anthropic/claude-opus-4-6", all_models)
+
     def test_tradeoff_default_parallel_and_judge(self) -> None:
         plan = self.router.route(
             "evaluate tradeoffs for these architectures",
@@ -95,6 +140,17 @@ class DispatcherRouterTests(unittest.TestCase):
         all_models = [run.model for run in plan.parallel] + [plan.judge.model]
         self.assertNotIn("anthropic/claude-sonnet-4-6", all_models)
         self.assertNotIn("anthropic/claude-opus-4-6", all_models)
+
+    def test_smoke_build_modes(self) -> None:
+        for prompt, expected in (
+            ("buildq: fix parser", "buildq"),
+            ("build: implement auth service", "build"),
+            ("buildx: refactor backend", "buildx"),
+        ):
+            with self.subTest(prompt=prompt):
+                plan = self.router.route(prompt, domain="code-architecture")
+                self.assertEqual(plan.mode, expected)
+                self.assertTrue(plan.pipeline)
 
 
 if __name__ == "__main__":
